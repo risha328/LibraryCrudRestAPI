@@ -3,8 +3,16 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Book } from './schemas/book.schema';
 import { CreateBookDto } from './dto/create-book.dto';
 import { UpdateBookDto } from './dto/update-book.dto';
+import { GetBooksDto } from './dto/get-books.dto';
 import mongoose from 'mongoose';
 
+export interface PaginatedBooks {
+  data: Book[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
 
 @Injectable()
 export class BookService {
@@ -13,9 +21,31 @@ export class BookService {
         private bookModel: mongoose.Model<Book>,
     ) {}
 
-    async findAll(): Promise<Book[]> {
-        const books = await this.bookModel.find();
-        return books;
+    async findAll(options: GetBooksDto): Promise<PaginatedBooks> {
+        const { page = 1, limit = 10, search } = options;
+        const skip = (page - 1) * limit;
+
+        let query = {};
+        if (search) {
+            query = {
+                $or: [
+                    { title: { $regex: search, $options: 'i' } },
+                    { description: { $regex: search, $options: 'i' } },
+                    { author: { $regex: search, $options: 'i' } },
+                ],
+            };
+        }
+
+        const total = await this.bookModel.countDocuments(query);
+        const books = await this.bookModel.find(query).skip(skip).limit(limit);
+
+        return {
+            data: books,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+        };
     }
     async create(book: CreateBookDto): Promise<Book> {
         const newBook = await this.bookModel.create(book);
